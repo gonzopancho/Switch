@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from ryu.lib.mac import haddr_to_bin
 
 """
  パッチパネルの操作
@@ -56,8 +57,8 @@ def rewrite_gw_patch(datapath, auth_ip, auth_mac, gw_ip, gw_mac, port_a, port_g,
 	match_a = parser.OFPMatch(in_port=port_a, eth_type=0x800)
 	match_g = parser.OFPMatch(in_port=port_g, eth_type=0x800)
 
-	action_a = parser.OFPMatchField.make(ofproto.OXM_OF_ETH_SRC, gw_mac)
-	action_g = parser.OFPMatchField.make(ofproto.OXM_OF_ETH_DST, auth_mac)
+	action_a = parser.OFPMatchField.make(ofproto.OXM_OF_ETH_SRC, haddr_to_bin(gw_mac))
+	action_g = parser.OFPMatchField.make(ofproto.OXM_OF_ETH_DST, haddr_to_bin(auth_mac))
 
 	actions_a = [parser.OFPActionSetField(action_a), parser.OFPActionOutput(port_g)]
 	actions_g = [parser.OFPActionSetField(action_g), parser.OFPActionOutput(port_a)]
