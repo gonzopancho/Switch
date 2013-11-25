@@ -20,8 +20,18 @@ class HttpController(ControllerBase):
 	# HTTP のルーティングは @route デコレータで行う
 	#
 	@route('dp', '/add/{l2addr}', methods=['GET'], requirements={'l2addr': r'([a-fA-F0-9]{2}[:|\-]?){6}'})
-	def index(self, req, l2addr, **_kwargs):
+	def add(self, req, l2addr, **_kwargs):
 		value = self.controller.add_mac_flow(l2addr)
+		json_str = json.dumps({"result" : value})
+
+		return Response(status=200, body=json_str)
+
+	#
+	# HTTP のルーティングは @route デコレータで行う
+	#
+	@route('dp', '/remove/{l2addr}', methods=['GET'], requirements={'l2addr': r'([a-fA-F0-9]{2}[:|\-]?){6}'})
+	def remove(self, req, l2addr, **_kwargs):
+		value = self.controller.remove_mac_flow(l2addr)
 		json_str = json.dumps({"result" : value})
 
 		return Response(status=200, body=json_str)

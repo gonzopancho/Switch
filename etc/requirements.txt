@@ -2,4 +2,5 @@ ryu
 sqlalchemy
 netifaces
 simplejson
+mysql-python
 

@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 import sys
+from datastore.mysql import Terminal
+from datastore.mysql import getMySQLSession
 
 """
  Configulation File Setting
@@ -7,7 +9,8 @@ import sys
 from os.path import abspath, dirname
 from ConfigParser import SafeConfigParser
 config = SafeConfigParser()
-config.read(abspath(dirname(abspath(__file__)) + '../../etc/authhub.conf'))
+config_file = abspath(dirname(abspath(__file__)) + '../../etc/authhub.conf')
+config.read(config_file)
 
 """
  OpenFlow Ryu COntroller
@@ -25,7 +28,8 @@ from interface.http import HttpController
  Tuntunkun Utility
 """
 from util.datapath import Datapath
-from lib.switch import patch, rewrite_gw_patch, add_mac_patch, add_ip_patch
+from lib.switch import patch, rewrite_gw_patch, add_ip_patch
+from lib.switch import add_mac_patch, remove_mac_patch
 from lib.l2fw import arp
 from lib.l3fw import dns, dhcp
 from lib.net import interface
@@ -46,6 +50,12 @@ class AuthHub(app_manager.RyuApp):
 		# AuthHub初期化
 		super(AuthHub, self).__init__(*args, **kwargs)
 		self.datapath = None
+
+		# MySQL
+		self.mysql_username = config.get('MySQL', 'username', False)
+		self.mysql_hostname = config.get('MySQL', 'hostname', False)
+		self.mysql_password = config.get('MySQL', 'password', False)
+		self.mysql_database = config.get('MySQL', 'database', False)
 
 		# ネットワークの設定を取得
 		self.net_lan	= config.get('DEFAULT', 'net_lan', False)
@@ -94,26 +104,35 @@ class AuthHub(app_manager.RyuApp):
 			auth_port	= self.datapath.get_port_no(self.net_auth)
 			guest_port	= self.datapath.get_port_no(self.net_guest)
 
-			# 仮想的に結線を行う
-			patch(ev.msg.datapath, auth_port, guest_port, priority=0)
-
 			# IPアドレスによる仮想的な結線を行う
 			add_ip_patch(ev.msg.datapath, auth_port, guest_port, self.net_auth_ip, priority=200)
 
-			#rewrite_gw_patch(
-			#	ev.msg.datapath,
-			#	self.net_auth_ip, self.net_auth_mac,
-			#	self.net_gw_ip, self.net_gw_mac,
-			#	auth_port, guest_port, priority=0)
+			# ゲートウェイのすり替えを行う
+			rewrite_gw_patch(
+				ev.msg.datapath, auth_port, guest_port,
+				self.net_auth_mac, self.net_gw_mac,
+				priority=1)
+
+			# 仮想的に結線を行う
+			patch(ev.msg.datapath, auth_port, guest_port, priority=0)
 
 			# ARPを通す
-			arp.allow_request(ev.msg.datapath, lan_port, auth_port, guest_port, priority=10)
+			arp.allow_request(ev.msg.datapath, lan_port, auth_port, guest_port, priority=200)
 
 			# DNSとDHCPリクエストのみを通す
 			dns.allow_request(ev.msg.datapath, lan_port, guest_port, priority=10)
 			dhcp.allow_request(ev.msg.datapath, lan_port, guest_port, priority=10)
 
+			# Show Switch Connection Message
 			print "SWITCH JOINED"
+
+			# Get MySQL Session
+			session = getMySQLSession(
+				self.mysql_username, self.mysql_hostname,
+				self.mysql_password, self.mysql_database)
+			for terminal in session.query(Terminal).filter_by(enabled=True):
+				print "ACCEPT %s: %s" %(terminal.name, terminal.l2addr)
+				self.add_mac_flow(terminal.l2addr)
 
 	#
 	# MACアドレスの登録処理(HTTPDインターフェイスから呼び出される)
@@ -134,4 +153,31 @@ class AuthHub(app_manager.RyuApp):
 		# MACアドレスによる仮想的な結線を行う
 		add_mac_patch(datapath, lan_port, guest_port, mac_addr, priority=100)
 		return True
+
+	#
+	# MACアドレスの消去処理(HTTPDインターフェイスから呼び出される)
+	#
+	def remove_mac_flow(self, mac_addr):
+		# データパスが存在しない場合は、何もしない
+		if self.datapath == None:
+			return False
+
+		# 生のデータパス取得
+		datapath	= self.datapath.get_raw_datapath()
+
+		# インタフェイス名からポート番号の取得
+		lan_port	= self.datapath.get_port_no(self.net_lan)
+		auth_port	= self.datapath.get_port_no(self.net_auth)
+		guest_port	= self.datapath.get_port_no(self.net_guest)
+
+		# MACアドレスによる仮想的な結線を消去
+		remove_mac_patch(datapath, lan_port, guest_port, mac_addr, priority=100)
+		return True
+
+if __name__ == '__main__':
+	import sys
+	from ryu.cmd import manager
+
+	sys.argv.append(__name__)
+	manager.main()
 
