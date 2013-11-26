@@ -2,7 +2,7 @@
 
 # pip, virtualenv, fabricのインストール
 ${SUDO} apt-get install -y python-pip python-virtualenv fabric
-${SUDO} install python-dev libmysqlclient-dev
+${SUDO} apt-get install -y python-dev libmysqlclient-dev
 
 # OpenSSHのインストール
 ${SUDO} apt-get install -y openssh-server
